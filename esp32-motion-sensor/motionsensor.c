@@ -255,45 +255,40 @@ void setup() {
   Serial.println(WiFi.localIP());
 } 
 
-class MotionSensorDriver {
-public:
-  MotionSensorDriver(size_t threshold) : motions_count_threshold(threshold) {} 
+#define MOTIONS_COUNT_THRESHOLD 10
 
-  void handle_pin_signal(int signal) {
-    if (motion_detected) return;
-
-    if (signal == HIGH) {
-      motions_count++;
-
-      if (motions_count > motions_count_threshold) {
-        Serial.println("motion detected");
-
-        motion_detected = true;
-        motions_count = 0;
-      }
-    } else {
-      motions_count = 0;
-
-      Serial.println("motion count set to 0");
-    }
-  }
-
-  bool is_motion_detected() const {
-    return motion_detected;
-  }
-
-  void set_motion_detected(bool value) {
-    motion_detected = value;
-  }
-
-private:
-  bool motion_detected = false;
-  size_t motions_count = 0;
-  
-  size_t motions_count_threshold;
+struct MotionSensorDriver {
+  bool motion_detected;
+  size_t motions_count;
+  void (*handle_pin_signal)(MotionSensorDriver* self, int signal);
 };
 
-MotionSensorDriver motion_sensor_driver{ 10 };
+static void handle_pin_signal(MotionSensorDriver* self, int signal) {
+  if (self->motion_detected) return;
+
+  if (signal == HIGH) {
+    self->motions_count += 1;
+
+    if (self->motions_count > MOTIONS_COUNT_THRESHOLD) {
+      Serial.println("motion detected");
+
+      self->motion_detected = true;
+      self->motions_count = 0;
+    }
+  } else {
+    self->motions_count = 0;
+
+    Serial.println("motion count set to 0");
+  }
+}
+
+MotionSensorDriver driver_instance = {
+  .motion_detected = false,
+  .motions_count = 0,
+  .handle_pin_signal = handle_pin_signal
+};
+
+MotionSensorDriver* motion_sensor_driver = &driver_instance;
 
 void loop() {
   if (sendPhoto) {
@@ -302,14 +297,14 @@ void loop() {
     sendPhoto = false;
   }
 
-  motion_sensor_driver.handle_pin_signal(digitalRead(MOTION_SENSOR_PIN));
+  motion_sensor_driver->handle_pin_signal(motion_sensor_driver, digitalRead(MOTION_SENSOR_PIN));
 
   if (millis() > lastTimeBotRan + botRequestDelay) {
-    if (motion_sensor_driver.is_motion_detected()) {
+    if (motion_sensor_driver->motion_detected) {
       sendPhoto = true;
       Serial.println("send photo flag set - motion detected");
 
-      motion_sensor_driver.set_motion_detected(false);
+      motion_sensor_driver->motion_detected = false;
       Serial.println("motion detected flag cleared");
     }
 
